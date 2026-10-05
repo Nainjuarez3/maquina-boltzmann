@@ -58,6 +58,24 @@ def actualizar_unidad(indice, estado, pesos, sesgos, temperatura, generador):
     return nuevo
 
 
+def simular(estado_inicial, pesos, sesgos, temperatura, iteraciones, semilla):
+    # una iteracion = actualizar todas las neuronas, una por una
+    # con la misma semilla siempre sale la misma secuencia
+    validar_pesos(pesos)
+    generador = np.random.default_rng(semilla)
+    estado = list(estado_inicial)
+
+    estados = []
+    energias = []
+    for _ in range(iteraciones):
+        for i in range(len(estado)):
+            estado = actualizar_unidad(i, estado, pesos, sesgos, temperatura, generador)
+        # se guarda como quedo la red al terminar la iteracion
+        estados.append(estado)
+        energias.append(energia(estado, pesos, sesgos))
+    return estados, energias
+
+
 def estado_desde_numero(numero, n):
     # pasa un numero a binario, por ejemplo 5 -> [1, 0, 1]
     binario = format(numero, f"0{n}b")
@@ -83,9 +101,12 @@ if __name__ == "__main__":
         p = probabilidad_activacion(i, estado, PESOS, SESGOS, temperatura)
         print(f"neurona {i + 1}: {p:.4f}")
 
-    # prueba: actualizar las tres neuronas una vez
-    generador = np.random.default_rng(SEMILLA)
-    print("\nUna pasada de actualizacion")
-    for i in range(n):
-        estado = actualizar_unidad(i, estado, PESOS, SESGOS, temperatura, generador)
-        print(f"despues de la neurona {i + 1}: {estado}")
+    # simulacion corta para ver como se mueve la red
+    iteraciones = 20
+    estados, energias = simular(estado, PESOS, SESGOS, temperatura, iteraciones, SEMILLA)
+    print(f"\nSimulacion: T = {temperatura}, semilla = {SEMILLA}")
+    print("Iter  Estado   E(s)")
+    for k in range(iteraciones):
+        etiqueta = "".join(str(v) for v in estados[k])
+        print(f"{k + 1:4d}  {etiqueta}     {energias[k]:+.4f}")
+    print(f"Energia media: {np.mean(energias):+.4f}")
