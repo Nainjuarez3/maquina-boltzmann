@@ -1,9 +1,16 @@
 import csv
+
+import matplotlib.pyplot as plt
 import numpy as np
 
 SEMILLA = 42  # para que siempre salgan los mismos numeros aleatorios
 ITERACIONES = 50000  # iteraciones que si se cuentan
 DESCARTE = 1000  # iteraciones del inicio que no se cuentan
+TEMPERATURAS = [0.2, 1.0, 5.0]
+VENTANA = 200  # iteraciones que se ven en la grafica de energia
+
+AZUL = "#2a78d6"
+NARANJA = "#eb6834"
 
 # pesos y sesgos del ejercicio 4.3
 PESOS = np.array([
@@ -111,44 +118,144 @@ def contar_frecuencias(visitados, n):
 
 
 def guardar_csv(nombre, filas):
-    encabezado = ["temperatura", "estado", "energia", "prob_teorica",
-                  "frecuencia", "error_abs"]
+    encabezado = ["experimento", "temperatura", "estado", "energia",
+                  "prob_teorica", "frecuencia", "error_abs"]
     with open(nombre, "w", newline="", encoding="utf-8") as archivo:
         escritor = csv.writer(archivo)
         escritor.writerow(encabezado)
         escritor.writerows(filas)
 
 
+def correr(pesos, sesgos, temperatura):
+    # parte teorica + simulacion para una red y una temperatura
+    # siempre se empieza en 000 y con la misma semilla
+    n = len(sesgos)
+    estados, energias, factores, z, probs = distribucion_teorica(pesos, sesgos, temperatura)
+    visitados, energias_sim = simular([0] * n, pesos, sesgos, temperatura,
+                                      DESCARTE + ITERACIONES, SEMILLA)
+    return {
+        "temperatura": temperatura,
+        "estados": estados,
+        "energias": energias,
+        "factores": factores,
+        "z": z,
+        "probs": probs,
+        "visitados": visitados,
+        "energias_sim": energias_sim,
+        "frecuencias": contar_frecuencias(visitados[DESCARTE:], n),
+    }
+
+
+def filas_csv(nombre, r):
+    filas = []
+    for k in range(len(r["estados"])):
+        error = abs(r["probs"][k] - r["frecuencias"][k])
+        filas.append([nombre, r["temperatura"], etiqueta(r["estados"][k]),
+                      round(r["energias"][k], 6), round(r["probs"][k], 6),
+                      round(r["frecuencias"][k], 6), round(error, 6)])
+    return filas
+
+
+def graficar_energia(resultados):
+    # una grafica por temperatura, con el mismo eje para poder comparar
+    fig, ejes = plt.subplots(len(resultados), 1, figsize=(8, 7), sharex=True, sharey=True)
+    for eje, r in zip(ejes, resultados):
+        eje.plot(range(1, VENTANA + 1), r["energias_sim"][:VENTANA], color=AZUL, linewidth=1.2)
+        eje.set_title(f"T = {r['temperatura']}")
+        eje.set_ylabel("Energia E(s)")
+        eje.grid(alpha=0.3)
+    ejes[-1].set_xlabel("Iteracion")
+    fig.suptitle(f"Energia de la red en las primeras {VENTANA} iteraciones")
+    fig.tight_layout()
+    fig.savefig("energia_temperaturas.png", dpi=150)
+    plt.close(fig)
+
+
+def graficar_histogramas(resultados):
+    # barras = lo que salio en la simulacion, puntos = probabilidad teorica
+    fig, ejes = plt.subplots(1, len(resultados), figsize=(11, 4), sharey=True)
+    for eje, r in zip(ejes, resultados):
+        nombres = [etiqueta(s) for s in r["estados"]]
+        eje.bar(nombres, r["frecuencias"], color=AZUL, label="Simulacion")
+        eje.plot(nombres, r["probs"], "o", color="black", markersize=4, label="Teorica")
+        eje.set_title(f"T = {r['temperatura']}")
+        eje.set_xlabel("Estado")
+        eje.grid(axis="y", alpha=0.3)
+    ejes[0].set_ylabel("Frecuencia")
+    ejes[-1].legend()
+    fig.suptitle("Frecuencia de cada estado segun la temperatura")
+    fig.tight_layout()
+    fig.savefig("histograma_temperaturas.png", dpi=150)
+    plt.close(fig)
+
+
+def graficar_pesos(original, modificado):
+    nombres = [etiqueta(s) for s in original["estados"]]
+    x = np.arange(len(nombres))
+    ancho = 0.38
+    fig, eje = plt.subplots(figsize=(8, 4.5))
+    eje.bar(x - 0.2, original["frecuencias"], ancho, color=AZUL, label="Original (w12 = 0.8)")
+    eje.bar(x + 0.2, modificado["frecuencias"], ancho, color=NARANJA, label="Modificado (w12 = -0.8)")
+    eje.set_xticks(x)
+    eje.set_xticklabels(nombres)
+    eje.set_xlabel("Estado")
+    eje.set_ylabel("Frecuencia")
+    eje.set_title("Efecto de cambiar el signo de w12 (T = 1)")
+    eje.grid(axis="y", alpha=0.3)
+    eje.legend()
+    fig.tight_layout()
+    fig.savefig("comparacion_pesos.png", dpi=150)
+    plt.close(fig)
+
+
 if __name__ == "__main__":
     validar_pesos(PESOS)
-    n = len(SESGOS)
-    temperatura = 1.0
-
-    # parte teorica
-    estados, energias, factores, z, probs = distribucion_teorica(PESOS, SESGOS, temperatura)
-
-    # parte experimental: se simula y se tiran las primeras iteraciones
-    visitados, _ = simular([0, 0, 0], PESOS, SESGOS, temperatura,
-                           DESCARTE + ITERACIONES, SEMILLA)
-    frecuencias = contar_frecuencias(visitados[DESCARTE:], n)
-
-    print(f"T = {temperatura}, semilla = {SEMILLA}, "
-          f"iteraciones = {ITERACIONES}, descarte = {DESCARTE}\n")
-    print("Estado    E(s)     e^(-E)   P teorica  Frecuencia  Error")
     filas = []
-    for k in range(2 ** n):
-        error = abs(probs[k] - frecuencias[k])
-        print(f"{etiqueta(estados[k])}     {energias[k]:+.4f}   {factores[k]:.4f}   "
-              f"{probs[k]:.4f}     {frecuencias[k]:.4f}      {error:.4f}")
-        filas.append([temperatura, etiqueta(estados[k]), round(energias[k], 6),
-                      round(probs[k], 6), round(frecuencias[k], 6), round(error, 6)])
 
-    mas_probable = probs.index(max(probs))
-    menor_energia = energias.index(min(energias))
-    print(f"\nZ = {z:.4f}")
-    print(f"Suma de probabilidades = {sum(probs):.10f}")
-    print(f"Estado mas probable: {etiqueta(estados[mas_probable])}")
-    print(f"Estado de menor energia: {etiqueta(estados[menor_energia])}")
+    # ---- 8.1 efecto de la temperatura ----
+    resultados = [correr(PESOS, SESGOS, t) for t in TEMPERATURAS]
 
+    print("EFECTO DE LA TEMPERATURA")
+    print(f"semilla = {SEMILLA}, iteraciones = {ITERACIONES}, descarte = {DESCARTE}\n")
+    print(f"T     Mas frecuente  Energia media  Desv. energia  "
+          f"Visitados en {VENTANA}  Visitados en total")
+    for r in resultados:
+        mas_frecuente = r["frecuencias"].index(max(r["frecuencias"]))
+        contadas = r["energias_sim"][DESCARTE:]
+        en_ventana = len(set(etiqueta(s) for s in r["visitados"][:VENTANA]))
+        en_total = sum(1 for f in r["frecuencias"] if f > 0)
+        print(f"{r['temperatura']:<5} {etiqueta(r['estados'][mas_frecuente]):<14} "
+              f"{np.mean(contadas):+.4f}        {np.std(contadas):.4f}         "
+              f"{en_ventana:<17} {en_total}")
+        filas += filas_csv("original", r)
+
+    # ---- 8.3 teorico vs experimental con T = 1 ----
+    r = resultados[1]
+    print("\nTEORICO VS EXPERIMENTAL (T = 1)")
+    print("Estado    E(s)     e^(-E)   P teorica  Frecuencia  Error")
+    for k in range(len(r["estados"])):
+        error = abs(r["probs"][k] - r["frecuencias"][k])
+        print(f"{etiqueta(r['estados'][k])}     {r['energias'][k]:+.4f}   {r['factores'][k]:.4f}   "
+              f"{r['probs'][k]:.4f}     {r['frecuencias'][k]:.4f}      {error:.4f}")
+    print(f"Z = {r['z']:.4f}")
+    print(f"Suma de probabilidades = {sum(r['probs']):.10f}")
+
+    # ---- 8.2 efecto de los pesos: se cambia el signo de w12 ----
+    pesos_mod = PESOS.copy()
+    pesos_mod[0, 1] = -0.8
+    pesos_mod[1, 0] = -0.8  # hay que cambiar los dos para que siga simetrica
+    modificado = correr(pesos_mod, SESGOS, 1.0)
+
+    print("\nEFECTO DE LOS PESOS (w12 de 0.8 a -0.8, T = 1)")
+    print("Estado  E original  E modificada  Frec. original  Frec. modificada")
+    for k in range(len(r["estados"])):
+        print(f"{etiqueta(r['estados'][k])}     {r['energias'][k]:+.4f}     {modificado['energias'][k]:+.4f}       "
+              f"{r['frecuencias'][k]:.4f}          {modificado['frecuencias'][k]:.4f}")
+    filas += filas_csv("w12_negativo", modificado)
+
+    # ---- archivos de salida ----
     guardar_csv("resultados.csv", filas)
-    print("\nSe guardo resultados.csv")
+    graficar_energia(resultados)
+    graficar_histogramas(resultados)
+    graficar_pesos(r, modificado)
+    print("\nSe guardaron resultados.csv y las tres graficas")
