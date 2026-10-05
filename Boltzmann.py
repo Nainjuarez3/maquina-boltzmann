@@ -1,5 +1,6 @@
-# boltzmann v1
 import numpy as np
+
+SEMILLA = 42  # para que siempre salgan los mismos numeros aleatorios
 
 # pesos y sesgos del ejercicio 4.3
 PESOS = np.array([
@@ -19,9 +20,9 @@ def validar_pesos(pesos, tolerancia=1e-12):
 
     # simetrica = igual a su transpuesta
     if not np.allclose(pesos, pesos.T, atol=tolerancia):
-        raise ValueError("La matriz de pesos debe ser simétrica (w_ij = w_ji).")
+        raise ValueError("La matriz de pesos debe ser simetrica (w_ij = w_ji).")
 
-    # una neurona no se conecta consigo misma
+    # una neurona no se conecta con ella misma
     if not np.allclose(np.diag(pesos), 0.0, atol=tolerancia):
         raise ValueError("La diagonal de la matriz de pesos debe ser cero.")
 
@@ -34,6 +35,27 @@ def energia(estado, pesos, sesgos):
     parte_sesgos = -(sesgos @ s)
     # el + 0.0 es para que el estado 000 no salga como -0.0
     return float(parte_pesos + parte_sesgos) + 0.0
+
+
+def probabilidad_activacion(indice, estado, pesos, sesgos, temperatura):
+    # delta_e = cuanto baja la energia si la neurona se enciende
+    # delta_e = suma(w_ij * s_j) + b_i
+    # (como la diagonal es cero, la neurona no se cuenta a si misma)
+    s = np.asarray(estado, dtype=float)
+    delta_e = pesos[indice] @ s + sesgos[indice]
+    # sigmoide: P(s_i = 1) = 1 / (1 + e^(-delta_e / T))
+    return float(1.0 / (1.0 + np.exp(-delta_e / temperatura)))
+
+
+def actualizar_unidad(indice, estado, pesos, sesgos, temperatura, generador):
+    # la neurona se enciende con probabilidad p, si no, se apaga
+    p = probabilidad_activacion(indice, estado, pesos, sesgos, temperatura)
+    nuevo = list(estado)
+    if generador.random() < p:
+        nuevo[indice] = 1
+    else:
+        nuevo[indice] = 0
+    return nuevo
 
 
 def estado_desde_numero(numero, n):
@@ -52,3 +74,18 @@ if __name__ == "__main__":
         estado = estado_desde_numero(numero, n)
         etiqueta = "".join(str(v) for v in estado)
         print(f"{etiqueta}     {energia(estado, PESOS, SESGOS):+.4f}")
+
+    # prueba: probabilidad de encender cada neurona partiendo de 000
+    estado = [0, 0, 0]
+    temperatura = 1.0
+    print("\nProbabilidades desde 000 con T = 1")
+    for i in range(n):
+        p = probabilidad_activacion(i, estado, PESOS, SESGOS, temperatura)
+        print(f"neurona {i + 1}: {p:.4f}")
+
+    # prueba: actualizar las tres neuronas una vez
+    generador = np.random.default_rng(SEMILLA)
+    print("\nUna pasada de actualizacion")
+    for i in range(n):
+        estado = actualizar_unidad(i, estado, PESOS, SESGOS, temperatura, generador)
+        print(f"despues de la neurona {i + 1}: {estado}")
